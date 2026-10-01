@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CNC 銑床 G/M 碼虛擬學習系統</title>
-    <!-- 引入 Three.js 核心與字型套件 -->
+    <title>CNC 銑床虛擬模擬機</title>
+    <!-- 引入 Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         :root {
@@ -14,7 +14,8 @@
             --header-bg: #d0dbe5;
             --text-main: #333333;
             --accent-blue: #0055a4;
-            --code-bg: #fafafa;
+            --code-bg: #282c34; /* 改為深色主題，更具程式編輯器感 */
+            --code-text: #abb2bf;
         }
 
         body, html {
@@ -24,52 +25,36 @@
             display: flex; flex-direction: column; color: var(--text-main);
         }
 
-        /* 頂部工具列 */
         .toolbar {
             background-color: var(--header-bg); border-bottom: 1px solid var(--border-color);
             padding: 8px 15px; display: flex; gap: 15px; align-items: center; font-size: 14px;
         }
-
         .toolbar button {
             background-color: #fff; border: 1px solid var(--border-color);
             padding: 5px 15px; cursor: pointer; border-radius: 3px; font-size: 13px;
         }
-
         .toolbar button:hover { background-color: #eaf1f8; border-color: var(--accent-blue); }
 
-        /* 工作區佈局 */
         .main-workspace { display: flex; flex: 1; overflow: hidden; }
 
-        /* 左側面板 */
+        /* 左側面板 - 移除鷹架，全螢幕編輯器 */
         .editor-panel {
-            width: 380px; background-color: var(--panel-bg);
+            width: 320px; background-color: var(--panel-bg);
             border-right: 1px solid var(--border-color); display: flex; flex-direction: column;
         }
-
         .panel-header {
             background-color: #f5f7fa; padding: 8px 10px;
             border-bottom: 1px solid var(--border-color); font-weight: bold; font-size: 14px;
         }
-
-        /* 鷹架：G/M碼參考字典 */
-        .reference-dict {
-            max-height: 250px; overflow-y: auto; background-color: #fffde7;
-            border-bottom: 2px solid var(--accent-blue); padding: 10px; font-size: 12px;
-            line-height: 1.6;
-        }
-        .reference-dict h4 { margin: 0 0 5px 0; color: #d35400; font-size: 13px;}
-        .reference-dict ul { margin: 0; padding-left: 20px; color: #444;}
-        
-        /* 程式碼編輯器 */
         .gcode-editor {
-            flex: 1; width: 100%; border: none; resize: none; padding: 10px;
+            flex: 1; width: 100%; border: none; resize: none; padding: 15px;
             font-family: 'Consolas', 'Courier New', monospace; font-size: 14px;
-            line-height: 1.5; box-sizing: border-box; background-color: var(--code-bg);
+            line-height: 1.6; box-sizing: border-box; background-color: var(--code-bg); color: var(--code-text);
         }
-        .gcode-editor:focus { outline: none; background-color: #fff; }
+        .gcode-editor:focus { outline: none; }
 
         /* 中央 3D 模擬區 */
-        .viewer-panel { flex: 1; position: relative; background-color: #f0f4f8; }
+        .viewer-panel { flex: 1; position: relative; background-color: #2b2b2b; } /* 換成深灰底色凸顯壓克力 */
         #canvas-container { width: 100%; height: 100%; display: block; }
 
         /* 右側資訊面板 */
@@ -91,73 +76,52 @@
 <body>
 
     <div class="toolbar">
-        <strong>CNC 虛擬模擬環境 (POC版)</strong>
-        <button onclick="resetSimulation()">🔄 重置機台與軌跡</button>
+        <strong>CNC 虛擬模擬環境</strong>
+        <button onclick="resetSimulation()">🔄 重置機台與工件</button>
     </div>
 
     <div class="main-workspace">
         
-        <!-- 左側：知識鷹架與編輯器 -->
+        <!-- 左側編輯器 -->
         <div class="editor-panel">
-            <div class="panel-header">📚 G/M 碼快速參考 (學習鷹架)</div>
-            <div class="reference-dict">
-                <h4>常⾒ G 碼 (運動與幾何控制)</h4>
-                <ul>
-                    <li><b>G00</b>：快速定位 (最大速度移動，不切削)</li>
-                    <li><b>G01</b>：直線切削 (依 F 值進給速度切削)</li>
-                    <li><b>G02/G03</b>：順/逆時針圓弧切削</li>
-                    <li><b>G04</b>：暫停 (Dwell)</li>
-                    <li><b>G17/G18/G19</b>：XY / ZX / YZ 平面選擇</li>
-                    <li><b>G28</b>：返回參考點 (機械原點)</li>
-                    <li><b>G40/G41/G42</b>：刀具徑向補正 (取消/左/右)</li>
-                    <li><b>G43/G49</b>：刀具長度補正 (啟動/取消)</li>
-                    <li><b>G54~G59</b>：工作座標系選擇</li>
-                    <li><b>G80~G89</b>：固定循環 (取消/鑽孔/深孔等)</li>
-                    <li><b>G90/G91</b>：絕對座標 / 相對座標模式</li>
-                    <li><b>G94/G95</b>：進給單位 (mm/min / mm/rev)</li>
-                </ul>
-                <h4 style="margin-top:10px;">常⾒ M 碼 (輔助與機械功能)</h4>
-                <ul>
-                    <li><b>M00/M01</b>：程式暫停 / 選擇性暫停</li>
-                    <li><b>M03/M04</b>：主軸正轉 / 反轉</li>
-                    <li><b>M05</b>：主軸停止</li>
-                    <li><b>M06</b>：自動換刀 (ATC)</li>
-                    <li><b>M08/M09</b>：切削液 開啟 / 關閉</li>
-                    <li><b>M30</b>：程式結束並歸零</li>
-                </ul>
-            </div>
-            
-            <div class="panel-header">✏️ 程式碼編輯區</div>
+            <div class="panel-header">✏️ G-Code 編輯器</div>
 <textarea id="gcode-input" class="gcode-editor" spellcheck="false">
 %
-O1001 (虛擬切削測試)
-G21 G90 G54 (設定單位與絕對座標)
-M03 S1200 (主軸啟動)
-M08 (開啟冷卻液)
+O1001 (壓克力雕刻測試)
+G21 G90 G54
+M03 S18000
+M08
 
-G00 X0 Y0 Z50 (安全高度)
-G00 X10 Y10 (移動至起點)
-G01 Z-2 F150 (下刀)
+G00 X0 Y0 Z10
+G00 X10 Y10
+G01 Z-2 F150
 
-(開始切削正方形輪廓)
+(雕刻幾何圖形)
 G01 X40 Y10 F300
 G01 X40 Y40
 G01 X10 Y40
 G01 X10 Y10
 
-G00 Z50 (提刀返回安全高度)
-G00 X0 Y0 (回到原點)
+G00 Z10
+G00 X25 Y25
+G01 Z-2 F150
+G01 X35 Y25 F300
+G01 X35 Y35
+G01 X25 Y35
+G01 X25 Y25
 
+G00 Z10
+G00 X0 Y0
 M09 M05 
 M30
 %
 </textarea>
         </div>
 
-        <!-- 中央：3D 視覺模擬區 -->
+        <!-- 中央 3D 模擬區 -->
         <div class="viewer-panel" id="canvas-container"></div>
 
-        <!-- 右側：後設認知與數據反饋 -->
+        <!-- 右側數據反饋 -->
         <div class="info-panel">
             <div class="panel-header">即時機台狀態</div>
             <div class="data-row"><span class="data-label">執行行號</span><span class="data-value" id="ui-line">--</span></div>
@@ -166,7 +130,7 @@ M30
             <div class="panel-header" style="border-top: 1px solid var(--border-color);">絕對座標 (Absolute)</div>
             <div class="data-row"><span class="data-label">X 軸</span><span class="data-value" id="ui-x">0.000</span></div>
             <div class="data-row"><span class="data-label">Y 軸</span><span class="data-value" id="ui-y">0.000</span></div>
-            <div class="data-row"><span class="data-label">Z 軸</span><span class="data-value" id="ui-z">50.000</span></div>
+            <div class="data-row"><span class="data-label">Z 軸 (深度)</span><span class="data-value" id="ui-z">10.000</span></div>
 
             <div class="panel-header" style="border-top: 1px solid var(--border-color);">加工參數</div>
             <div class="data-row"><span class="data-label">主軸轉速</span><span class="data-value" id="ui-s">0 RPM</span></div>
@@ -176,105 +140,192 @@ M30
 
     <!-- 底部播放控制 -->
     <div class="playback-controls">
-        <button onclick="startSimulation()" style="padding: 8px 20px; font-weight:bold; background-color: #4CAF50; color: white; border: none; border-radius: 4px; font-size: 14px; cursor: pointer;">▶ 載入代碼並開始模擬</button>
+        <button onclick="startSimulation()" style="padding: 8px 20px; font-weight:bold; background-color: #4CAF50; color: white; border: none; border-radius: 4px; font-size: 14px; cursor: pointer;">▶ 開始實體模擬切削</button>
     </div>
 
-    <!-- 系統核心邏輯 -->
     <script>
         // --- 1. Three.js 環境建置 ---
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xf0f4f8);
+        scene.background = new THREE.Color(0x333333); // 深灰色背景，凸顯壓克力
 
         const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
-        camera.position.set(60, 80, 120); 
-        camera.lookAt(50, 0, -40); // 鎖定工件中心
+        camera.position.set(60, 90, 100); 
+        camera.lookAt(50, 0, -40);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.shadowMap.enabled = true;
+        // 增強渲染器物理光照設定
+        renderer.physicallyCorrectLights = true;
         container.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        // 光源設定
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
         scene.add(ambientLight);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(100, 200, 50);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
+        directionalLight.position.set(100, 150, 50);
         directionalLight.castShadow = true;
         scene.add(directionalLight);
 
-        // 座標軸輔助 (原點)
         const axesHelper = new THREE.AxesHelper(30);
         scene.add(axesHelper);
 
-        // 工件 (設定 100x80x30，X:0~100, Y:0~80, Z向下)
-        // 為了將 G 碼座標轉為 3D 世界： G碼 X = 3D X, G碼 Y = 3D -Z, G碼 Z = 3D Y
-        const workpieceGeo = new THREE.BoxGeometry(100, 30, 80);
-        const workpieceMat = new THREE.MeshLambertMaterial({ color: 0xcc0000 });
-        const workpiece = new THREE.Mesh(workpieceGeo, workpieceMat);
-        workpiece.position.set(50, -15, -40); // 讓表面齊平 Y=0
-        workpiece.castShadow = true; workpiece.receiveShadow = true;
+        // --- 2. 建立壓克力工件 ---
+        // 提高分段數 (120x96) 以支援高解析度頂點切削變化
+        let workpieceGeo = new THREE.BoxGeometry(100, 30, 80, 120, 1, 96);
+        let workpieceMat = new THREE.MeshPhysicalMaterial({
+            color: 0xffffff,
+            metalness: 0.1,
+            roughness: 0.1,
+            transmission: 0.85, // 透光度 (壓克力效果)
+            ior: 1.49,          // 折射率
+            thickness: 30.0,
+            transparent: true,
+            opacity: 0.9,
+            side: THREE.DoubleSide
+        });
+        let workpiece = new THREE.Mesh(workpieceGeo, workpieceMat);
+        workpiece.position.set(50, -15, -40); // 表面齊平 Y=0
+        workpiece.castShadow = true; 
+        workpiece.receiveShadow = true;
         scene.add(workpiece);
 
-        // 刀具組
+        // 儲存原始頂點狀態，供重置使用
+        let originalVertices = new Float32Array(workpieceGeo.attributes.position.array);
+
+        // --- 3. 建立鎢鋼雕刻刀 (V-Bit) ---
         const toolGroup = new THREE.Group();
-        const toolGeo = new THREE.CylinderGeometry(2, 2, 20, 32);
-        const toolMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8 });
-        const tool = new THREE.Mesh(toolGeo, toolMat);
-        tool.position.y = 10; toolGroup.add(tool);
-        const spindleGeo = new THREE.CylinderGeometry(15, 15, 30, 32);
-        const spindleMat = new THREE.MeshLambertMaterial({ color: 0x004488 });
-        const spindle = new THREE.Mesh(spindleGeo, spindleMat);
-        spindle.position.y = 35; toolGroup.add(spindle);
+        const tungstenMat = new THREE.MeshStandardMaterial({ 
+            color: 0x555555, metalness: 0.9, roughness: 0.3 
+        });
+        
+        // 刀柄 (Shank)
+        const shankGeo = new THREE.CylinderGeometry(2, 2, 15, 32);
+        const shank = new THREE.Mesh(shankGeo, tungstenMat);
+        shank.position.y = 12.5; // (15/2) + 5
+        shank.castShadow = true;
+        toolGroup.add(shank);
+
+        // 錐狀刀尖 (V-Tip)
+        const tipGeo = new THREE.CylinderGeometry(2, 0.1, 5, 32);
+        const tip = new THREE.Mesh(tipGeo, tungstenMat);
+        tip.position.y = 2.5; // (5/2)
+        tip.castShadow = true;
+        toolGroup.add(tip);
+
         scene.add(toolGroup);
 
-        // 切削軌跡存放區
-        let pathLines = [];
+        // 主軸外殼 (示意)
+        const spindleGroup = new THREE.Group();
+        const spindleGeo = new THREE.CylinderGeometry(8, 8, 20, 32);
+        const spindleMat = new THREE.MeshLambertMaterial({ color: 0x003366 });
+        const spindle = new THREE.Mesh(spindleGeo, spindleMat);
+        spindle.position.y = 30;
+        spindleGroup.add(spindle);
+        scene.add(spindleGroup);
 
-        // --- 2. 模擬器狀態變數 ---
+        // --- 4. 模擬器核心狀態 ---
         let isSimulating = false;
         let waypoints = [];
         let currentWaypointIndex = 0;
-        let toolPosition = { x: 0, y: 0, z: 50 };
+        let toolPosition = { x: 0, y: 0, z: 10 }; // 初始安全高度
         
-        // 更新刀具在 3D 場景的實際位置
         function updateTool3DPosition() {
+            // 更新刀具
             toolGroup.position.set(toolPosition.x, toolPosition.z, -toolPosition.y);
+            // 更新主軸外殼跟隨
+            spindleGroup.position.set(toolPosition.x, toolPosition.z, -toolPosition.y);
+            
             // 更新 UI 面板
             document.getElementById('ui-x').innerText = toolPosition.x.toFixed(3);
             document.getElementById('ui-y').innerText = toolPosition.y.toFixed(3);
             document.getElementById('ui-z').innerText = toolPosition.z.toFixed(3);
         }
-        updateTool3DPosition(); // 初始化位置
+        updateTool3DPosition();
 
-        // --- 3. G-code 解析器 (關鍵核心) ---
+        // --- 5. 實體切削演算 (Mesh Deformation) ---
+        function carveMaterial() {
+            // 如果刀具深度 Z 大於等於 0，表示沒有切削
+            if (toolPosition.z >= 0) return;
+
+            const positions = workpieceGeo.attributes.position;
+            let isModified = false;
+            
+            // 取得刀尖在 3D 世界的絕對座標
+            const toolWorldX = toolPosition.x;
+            const toolWorldZ = -toolPosition.y; // G碼 Y 軸為 3D 世界 -Z 軸
+            
+            // V型刀雕刻寬度依賴切削深度
+            const maxCutRadius = Math.max(0.5, Math.abs(toolPosition.z));
+
+            for (let i = 0; i < positions.count; i++) {
+                let vx = positions.getX(i);
+                let vy = positions.getY(i);
+                let vz = positions.getZ(i);
+
+                // 只針對工件上方表面的頂點進行運算 (vy > 14，因工件高30，中心點為0)
+                if (vy > 14) {
+                    // 轉為世界座標
+                    let worldX = vx + 50; 
+                    let worldZ = vz - 40; 
+                    
+                    // 計算該點與刀尖的距離
+                    let dx = worldX - toolWorldX;
+                    let dz = worldZ - toolWorldZ;
+                    let distance = Math.sqrt(dx*dx + dz*dz);
+                    
+                    if (distance < maxCutRadius) {
+                        // V型刻槽計算：距離中心越近，切削越深
+                        let depthRatio = distance / maxCutRadius;
+                        // 計算出該點應該被切削到的世界 Y 座標
+                        let targetWorldY = toolPosition.z + (depthRatio * Math.abs(toolPosition.z));
+                        
+                        // 轉回本機頂點 Y 座標
+                        let targetLocalY = targetWorldY - (-15);
+                        
+                        // 布林減集邏輯：只能挖除，不能增添材質
+                        if (targetLocalY < vy) {
+                            positions.setY(i, targetLocalY);
+                            isModified = true;
+                        }
+                    }
+                }
+            }
+
+            if (isModified) {
+                positions.needsUpdate = true;
+                // 更新法向量以確保光影正確 (為確保效能，切削時可視情況降低呼叫頻率)
+                workpieceGeo.computeVertexNormals(); 
+            }
+        }
+
+        // --- 6. G-code 解析器 ---
         function parseGCode(text) {
             const lines = text.split('\n');
             let path = [];
-            let currentX = 0, currentY = 0, currentZ = 50;
-            let isAbsolute = true; // G90
+            let currentX = 0, currentY = 0, currentZ = 10;
+            let isAbsolute = true;
             
             for (let i = 0; i < lines.length; i++) {
                 let rawLine = lines[i].trim().toUpperCase();
-                let cleanLine = rawLine.split('(')[0].trim(); // 忽略註解
+                let cleanLine = rawLine.split('(')[0].trim();
                 if (!cleanLine) continue;
 
                 let targetX = currentX, targetY = currentY, targetZ = currentZ;
                 let isMove = false;
                 
-                // 基礎正則表達式擷取數值
                 const xMatch = cleanLine.match(/X([+-]?\d*\.?\d+)/);
                 const yMatch = cleanLine.match(/Y([+-]?\d*\.?\d+)/);
                 const zMatch = cleanLine.match(/Z([+-]?\d*\.?\d+)/);
                 
-                // 解析 M 碼狀態 (用於顯示)
-                if(cleanLine.includes('M03')) path.push({ type: 'state', cmd: 'M03', desc: '主軸啟動', lineNum: i+1 });
-                if(cleanLine.includes('M05')) path.push({ type: 'state', cmd: 'M05', desc: '主軸停止', lineNum: i+1 });
-                if(cleanLine.includes('M08')) path.push({ type: 'state', cmd: 'M08', desc: '冷卻液開', lineNum: i+1 });
-                if(cleanLine.includes('M09')) path.push({ type: 'state', cmd: 'M09', desc: '冷卻液關', lineNum: i+1 });
+                if(cleanLine.includes('M03')) path.push({ type: 'state', cmd: 'M03', lineNum: i+1 });
+                if(cleanLine.includes('M05')) path.push({ type: 'state', cmd: 'M05', lineNum: i+1 });
+                if(cleanLine.includes('M08')) path.push({ type: 'state', cmd: 'M08', lineNum: i+1 });
+                if(cleanLine.includes('M09')) path.push({ type: 'state', cmd: 'M09', lineNum: i+1 });
                 if(cleanLine.includes('G90')) isAbsolute = true;
                 if(cleanLine.includes('G91')) isAbsolute = false;
 
-                // 解析 G00 與 G01 移動
                 if (cleanLine.includes('G00') || cleanLine.includes('G0') || 
                     cleanLine.includes('G01') || cleanLine.includes('G1')) {
                     
@@ -284,11 +335,8 @@ M30
                     if (zMatch) targetZ = isAbsolute ? parseFloat(zMatch[1]) : currentZ + parseFloat(zMatch[1]);
 
                     path.push({
-                        type: 'move',
-                        cmd: cleanLine,
-                        lineNum: i + 1,
-                        x: targetX, y: targetY, z: targetZ,
-                        isCutting: (targetZ < 0) // Z深度小於0視為切削
+                        type: 'move', cmd: cleanLine, lineNum: i + 1,
+                        x: targetX, y: targetY, z: targetZ
                     });
 
                     currentX = targetX; currentY = targetY; currentZ = targetZ;
@@ -297,49 +345,35 @@ M30
             return path;
         }
 
-        // --- 4. 動畫與播放邏輯 ---
+        // --- 7. 動畫與播放控制 ---
         function startSimulation() {
-            resetSimulation(); // 先重置
+            resetSimulation();
             const code = document.getElementById('gcode-input').value;
             waypoints = parseGCode(code);
             if(waypoints.length > 0) {
                 isSimulating = true;
                 currentWaypointIndex = 0;
             } else {
-                alert("未偵測到有效的 G00/G01 移動指令！");
+                alert("未偵測到有效的移動指令！");
             }
         }
 
         function resetSimulation() {
             isSimulating = false;
-            toolPosition = { x: 0, y: 0, z: 50 };
+            toolPosition = { x: 0, y: 0, z: 10 };
             updateTool3DPosition();
             
-            // 清除畫面上所有的切削軌跡線
-            pathLines.forEach(line => scene.remove(line));
-            pathLines = [];
+            // 恢復壓克力工件表面頂點
+            workpieceGeo.attributes.position.array.set(originalVertices);
+            workpieceGeo.attributes.position.needsUpdate = true;
+            workpieceGeo.computeVertexNormals();
             
-            // 重置 UI
             document.getElementById('ui-line').innerText = "--";
             document.getElementById('ui-cmd').innerText = "準備就緒";
             document.getElementById('ui-s').innerText = "0 RPM";
             document.getElementById('ui-coolant').innerText = "關閉";
         }
 
-        // 畫線函數 (模擬切削留下的痕跡)
-        function drawCutLine(startX, startY, startZ, endX, endY, endZ) {
-            const material = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
-            const points = [];
-            // 轉換為 Three.js 座標系
-            points.push(new THREE.Vector3(startX, startZ, -startY));
-            points.push(new THREE.Vector3(endX, endZ, -endY));
-            const geometry = new THREE.BufferGeometry().setFromPoints(points);
-            const line = new THREE.Line(geometry, material);
-            scene.add(line);
-            pathLines.push(line);
-        }
-
-        // 核心渲染迴圈
         function animate() {
             requestAnimationFrame(animate);
 
@@ -347,44 +381,31 @@ M30
                 const target = waypoints[currentWaypointIndex];
 
                 if (target.type === 'state') {
-                    // 處理非移動指令的狀態更新
                     document.getElementById('ui-line').innerText = `L${target.lineNum}`;
                     document.getElementById('ui-cmd').innerText = target.cmd;
-                    if(target.cmd === 'M03') document.getElementById('ui-s').innerText = "1200 RPM";
+                    if(target.cmd === 'M03') document.getElementById('ui-s').innerText = "18000 RPM";
                     if(target.cmd === 'M05') document.getElementById('ui-s').innerText = "0 RPM";
                     if(target.cmd === 'M08') document.getElementById('ui-coolant').innerText = "開啟";
                     if(target.cmd === 'M09') document.getElementById('ui-coolant').innerText = "關閉";
                     currentWaypointIndex++;
                 } 
                 else if (target.type === 'move') {
-                    // 進行線性插值移動 (Interpolation)
                     const dx = target.x - toolPosition.x;
                     const dy = target.y - toolPosition.y;
                     const dz = target.z - toolPosition.z;
                     const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
                     
-                    // 設定動畫移動速度 (為視覺呈現調快，真實世界應依據 F 值)
-                    const speed = 1.0; 
+                    const speed = 0.5; // 模擬進給速度
 
                     if (distance < speed) {
-                        // 抵達目標點
-                        if (target.isCutting) {
-                            drawCutLine(toolPosition.x, toolPosition.y, toolPosition.z, target.x, target.y, target.z);
-                        }
                         toolPosition.x = target.x; toolPosition.y = target.y; toolPosition.z = target.z;
+                        carveMaterial(); // 抵達終點前最後一次切削
                         currentWaypointIndex++;
                     } else {
-                        // 移動中
-                        let oldX = toolPosition.x, oldY = toolPosition.y, oldZ = toolPosition.z;
-                        
                         toolPosition.x += (dx / distance) * speed;
                         toolPosition.y += (dy / distance) * speed;
                         toolPosition.z += (dz / distance) * speed;
-
-                        if (target.isCutting) {
-                            // 動態畫線 (模擬即時切削)
-                            drawCutLine(oldX, oldY, oldZ, toolPosition.x, toolPosition.y, toolPosition.z);
-                        }
+                        carveMaterial(); // 移動過程中即時切削
                     }
 
                     document.getElementById('ui-line').innerText = `L${target.lineNum}`;
@@ -393,22 +414,20 @@ M30
                 updateTool3DPosition();
             }
 
-            // 模擬主軸旋轉動畫
+            // 主軸與刀具自轉動畫
             if (document.getElementById('ui-s').innerText !== "0 RPM") {
-                toolGroup.rotation.y += 0.2;
+                toolGroup.rotation.y -= 0.5;
             }
 
             renderer.render(scene, camera);
         }
 
-        // 視窗自適應
         window.addEventListener('resize', () => {
             camera.aspect = container.clientWidth / container.clientHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(container.clientWidth, container.clientHeight);
         });
 
-        // 啟動迴圈
         animate();
     </script>
 </body>
