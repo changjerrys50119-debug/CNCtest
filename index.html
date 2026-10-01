@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNC 銑床 G/M 碼虛擬學習系統</title>
+    <!-- 引入 Three.js 作為 3D 渲染引擎 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            --primary-bg: #e8ecf1;
+            --panel-bg: #ffffff;
+            --border-color: #b0c4de;
+            --header-bg: #d0dbe5;
+            --text-main: #333333;
+            --accent-blue: #0055a4;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--primary-bg);
+            display: flex;
+            flex-direction: column;
+            color: var(--text-main);
+        }
+
+        /* 頂部工具列 */
+        .toolbar {
+            background-color: var(--header-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 8px 15px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        .toolbar button {
+            background-color: #fff;
+            border: 1px solid var(--border-color);
+            padding: 5px 15px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+
+        .toolbar button:hover {
+            background-color: #eaf1f8;
+            border-color: var(--accent-blue);
+        }
+
+        /* 主要內容區 (三欄配置) */
+        .main-workspace {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* 左側：程式碼編輯區 (鷹架區) */
+        .editor-panel {
+            width: 300px;
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            background-color: #f5f7fa;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: bold;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .gcode-editor {
+            flex: 1;
+            width: 100%;
+            border: none;
+            resize: none;
+            padding: 10px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            box-sizing: border-box;
+            background-color: #fafafa;
+            color: #1a1a1a;
+        }
+        
+        .gcode-editor:focus {
+            outline: none;
+            background-color: #fff;
+        }
+
+        /* 中央：3D 視覺模擬區 */
+        .viewer-panel {
+            flex: 1;
+            position: relative;
+            background-color: #f0f4f8; /* 類似參考圖的淺灰底色 */
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* 右側：數據監控面板 */
+        .info-panel {
+            width: 250px;
+            background-color: var(--panel-bg);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            font-size: 13px;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-label {
+            color: #666;
+        }
+
+        .data-value {
+            font-family: 'Consolas', monospace;
+            font-weight: bold;
+        }
+
+        /* 底部：播放控制列 */
+        .playback-controls {
+            background-color: var(--header-bg);
+            border-top: 1px solid var(--border-color);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+        }
+
+        input[type="range"] {
+            width: 150px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 頂部工具列 -->
+    <div class="toolbar">
+        <strong>NC 模擬環境</strong>
+        <button>刀具路徑模擬</button>
+        <button>實體切削驗證</button>
+        <button>顯示/隱藏 刀具</button>
+        <button style="margin-left: auto; background-color: #e6f2ff;">匯出加工報表</button>
+    </div>
+
+    <!-- 核心工作區 -->
+    <div class="main-workspace">
+        
+        <!-- 左側編輯器 (學習鷹架) -->
+        <div class="editor-panel">
+            <div class="panel-header">
+                <span>程式碼編輯 (M碼/G碼)</span>
+                <span style="color:var(--accent-blue); cursor:pointer;" onclick="alert('提示：請先設定主軸轉速(M03)與進給率(F)')">💡 提示</span>
+            </div>
+            <!-- 預設提供基礎的 G-code 作為學生學習的鷹架 -->
+            <textarea class="gcode-editor" spellcheck="false">
+%
+O1001 (STUDENT_PROJECT_1)
+G21 (單位: 毫米)
+G90 (絕對座標編程)
+G54 (選擇工作座標系)
+
+(啟動主軸與冷卻液)
+M03 S1200
+M08
+
+(快速定位至安全高度)
+G00 X0 Y0 Z50
+
+(準備下刀)
+G00 X10 Y10
+G01 Z-2 F150
+
+(在此處撰寫您的圖形輪廓...)
+G01 X40 Y10 F300
+G01 X40 Y40
+G01 X10 Y40
+G01 X10 Y10
+
+(退刀與結束程式)
+G00 Z50
+M09 (關閉冷卻液)
+M05 (主軸停止)
+M30 (程式結束)
+%</textarea>
+        </div>
+
+        <!-- 中央 3D 模擬區 -->
+        <div class="viewer-panel" id="canvas-container">
+            <!-- Three.js 將在此處渲染 -->
+        </div>
+
+        <!-- 右側資訊面板 (即時回饋與後設認知) -->
+        <div class="info-panel">
+            <div class="panel-header">移動資訊清單</div>
+            
+            <div class="data-row">
+                <span class="data-label">目前操作指令</span>
+                <span class="data-value" style="color:var(--accent-blue);">G01 Z-2 F150</span>
+            </div>
+            
+            <div class="data-row">
+                <span class="data-label">刀具號碼</span>
+                <span class="data-value">T01 (平銑刀)</span>
+            </div>
+
+            <div class="panel-header" style="border-top: 1px solid var(--border-color);">即時座標 (絕對)</div>
+            <div class="data-row"><span class="data-label">X 軸</span><span class="data-value">10.000</span></div>
+            <div class="data-row"><span class="data-label">Y 軸</span><span class="data-value">10.000</span></div>
+            <div class="data-row"><span class="data-label">Z 軸</span><span class="data-value">-2.000</span></div>
+
+            <div class="panel-header" style="border-top: 1px solid var(--border-color);">加工參數</div>
+            <div class="data-row"><span class="data-label">進給速度 (F)</span><span class="data-value">150 mm/min</span></div>
+            <div class="data-row"><span class="data-label">主軸轉速 (S)</span><span class="data-value">1200 RPM</span></div>
+            <div class="data-row"><span class="data-label">預估時間</span><span class="data-value">01min 24s</span></div>
+            
+            <div class="data-row" style="margin-top: auto; border-top: 2px solid #ccc; background-color: #fdf5f5;">
+                <span class="data-label">系統狀態</span>
+                <span class="data-value" style="color: #d9534f;">執行中...</span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 底部播放控制 -->
+    <div class="playback-controls">
+        <button style="padding: 5px 15px; font-weight:bold;">⏮ 重置</button>
+        <button style="padding: 5px 15px; font-weight:bold; background-color: #4CAF50; color: white; border: none; border-radius: 3px;">▶ 播放模擬</button>
+        <button style="padding: 5px 15px; font-weight:bold;">⏸ 暫停</button>
+        
+        <div class="slider-container" style="margin-left: 30px;">
+            <span>慢</span>
+            <input type="range" min="1" max="100" value="50">
+            <span>快</span>
+        </div>
+    </div>
+
+    <!-- Three.js 3D 渲染邏輯 -->
+    <script>
+        // 1. 初始化場景、相機與渲染器
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf0f4f8); // 配合整體視覺的淡背景
+
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(120, 100, 150); // 模擬等角透視圖
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        // 加入陰影支援以提升真實感
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        // 2. 建立燈光環境
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(100, 200, 50);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        // 3. 建立 3D 座標軸 (輔助學習 X, Y, Z 方向)
+        const axesHelper = new THREE.AxesHelper(60);
+        scene.add(axesHelper);
+
+        // 4. 建立紅色工件 (Workpiece)
+        const workpieceGeo = new THREE.BoxGeometry(100, 30, 80);
+        // 使用暗紅色，類似參考圖
+        const workpieceMat = new THREE.MeshLambertMaterial({ color: 0xcc0000 });
+        const workpiece = new THREE.Mesh(workpieceGeo, workpieceMat);
+        // 將工件頂部對齊 Z=0，方便理解座標
+        workpiece.position.y = -15; 
+        workpiece.castShadow = true;
+        workpiece.receiveShadow = true;
+        scene.add(workpiece);
+
+        // 5. 建立藍色主軸與刀具 (Spindle & Tool)
+        const toolGroup = new THREE.Group();
+        
+        // 刀具本體 (銀灰色)
+        const toolGeo = new THREE.CylinderGeometry(2, 2, 20, 32);
+        const toolMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.2 });
+        const tool = new THREE.Mesh(toolGeo, toolMat);
+        tool.position.y = 10;
+        tool.castShadow = true;
+        toolGroup.add(tool);
+
+        // 主軸頭 (深藍色，還原參考圖)
+        const spindleGeo = new THREE.CylinderGeometry(15, 15, 30, 32);
+        const spindleMat = new THREE.MeshLambertMaterial({ color: 0x004488 });
+        const spindle = new THREE.Mesh(spindleGeo, spindleMat);
+        spindle.position.y = 35;
+        spindle.castShadow = true;
+        toolGroup.add(spindle);
+
+        // 將刀具組放置於起始點 (X=10, Y=10, Z=10)
+        toolGroup.position.set(10, 10, 10);
+        scene.add(toolGroup);
+
+        // 6. 視窗縮放自適應處理
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // 7. 渲染迴圈與基礎動畫示範 (刀具自轉)
+        function animate() {
+            requestAnimationFrame(animate);
+            // 模擬主軸旋轉 (M03)
+            toolGroup.rotation.y += 0.1;
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
